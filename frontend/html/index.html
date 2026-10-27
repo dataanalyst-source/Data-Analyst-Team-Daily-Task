@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team Task Sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div>
+
+<section id="login" class="center" hidden>
+  <div class="glass login">
+    <div class="logo">✓</div>
+    <h1>Welcome back</h1>
+    <p class="muted">Sign in to your task sheet</p>
+    <label>Name</label>
+    <select id="lName"><option>Dheeraj</option><option>Vyshak</option><option>Nahan</option></select>
+    <div id="lErr" class="err"></div>
+    <button class="btn" id="lGo">Sign in</button>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand"><span class="logo sm">✓</span><b>Task Sheet</b></div>
+    <div class="right"><span class="chip" id="who"></span><button class="btn ghost" id="out">Logout</button></div>
+  </header>
+  <main class="wrap">
+    <div class="stats" id="stats"></div>
+    <div id="tabs" class="tabs"></div>
+    <div id="sum" hidden></div>
+    <div class="glass" id="sheet">
+      <div class="tools">
+        <input id="q" placeholder="Search tasks…">
+        <select id="fs"><option value="">All status</option><option>Pending</option><option>Completed</option></select>
+        <button class="btn" id="add">+ Add task</button>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th id="personHead" hidden>Member</th><th>Date</th><th>Task</th><th>Department</th><th>Req from</th><th>Status</th><th>Completed</th><th id="actionHead"></th></tr></thead>
+        <tbody id="body"></tbody>
+      </table></div>
+      <div id="empty" class="muted pad" hidden>No tasks found</div>
+    </div>
+  </main>
+</div>
+
+<div id="modal" class="center" hidden>
+  <div class="glass form">
+    <h2 id="mT">Add task</h2>
+    <div id="personBox" hidden><label>Member</label><select id="mPerson"></select></div>
+    <div class="g2"><div><label>Date</label><input type="date" id="mDate"></div>
+    <div><label>Status</label><select id="mSt"><option>Pending</option><option>Completed</option></select></div></div>
+    <label>Task</label><textarea id="mTask" rows="3"></textarea>
+    <div class="g2"><div><label>Department</label><select id="mDept"></select></div>
+    <div><label>Req from</label><select id="mReq"></select></div></div>
+    <input id="mMan" placeholder="Type name manually" hidden>
+    <div id="dBox" hidden><label>Completed date</label><input type="date" id="mDone"></div>
+    <div id="mErr" class="err"></div>
+    <div class="acts"><button class="btn danger" id="mDel" hidden>Delete</button><button class="btn ghost" id="mX">Cancel</button><button class="btn" id="mSave">Save</button></div>
+  </div>
+</div>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
