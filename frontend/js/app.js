@@ -2,7 +2,7 @@ const $=s=>document.querySelector(s), MAN='Other (type manually)';
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const fmt=d=>{if(!d)return'—';const[y,m,x]=d.split('-');return `${x} ${MON[m-1]} ${y}`};
-let S,person,tasks=[],editId=null,formPerson=null;
+let S,person,tasks=[],visibleTasks=[],editId=null,formPerson=null;
 
 async function api(p,m='GET',b){
   const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
@@ -34,6 +34,7 @@ function pick(p){
   $('#sheet').hidden=sm; $('#stats').hidden=sm; $('#sum').hidden=!sm;
   $('#personHead').hidden=!td;
   $('#actionHead').hidden=td;
+  $('#download').hidden=S.role!=='admin'||sm;
   $('#add').hidden=!S.canEdit||td;
   sm?summary():td?loadToday():load();
 }
@@ -57,10 +58,61 @@ function render(){
     .map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
   const q=$('#q').value.toLowerCase(), fs=$('#fs').value;
   const list=tasks.filter(t=>(!fs||t.status===fs)&&(!q||(t.task+t.department+t.req_from+(todayView?t.person:'')).toLowerCase().includes(q)));
+  visibleTasks=list;
   $('#empty').hidden=list.length>0;
   $('#body').innerHTML=list.map(t=>`<tr>${todayView?`<td>${esc(t.person)}</td>`:''}<td>${fmt(t.date)}</td><td class="t">${esc(t.task)}</td><td>${esc(t.department)}</td>
     <td>${esc(t.req_from)}</td><td>${S.canEdit&&!todayView?`<select class="stsel ${t.status}" onchange="quickStatus(${t.id},this.value)"><option${t.status==='Pending'?' selected':''}>Pending</option><option${t.status==='Completed'?' selected':''}>Completed</option></select>`:`<span class="badge ${t.status}">${t.status}</span>`}</td><td>${fmt(t.completed_date)}</td>
     ${todayView?'':`<td>${S.canEdit?`<button class="edit" onclick="openForm(${t.id})">Edit</button>`:''}</td>`}</tr>`).join('');
+}
+
+function downloadCsv(){
+  const headers=['Member','Date','Task','Department','Req from','Status','Completed'];
+  const cell=value=>{
+    let text=String(value??'');
+    if(/^[\t\r\n ]*[=+\-@]/.test(text)) text="'"+text;
+    return `"${text.replace(/"/g,'""')}"`;
+  };
+  const rows=visibleTasks.map(t=>[t.person||person,t.date,t.task,t.department,t.req_from,t.status,t.completed_date]);
+  const csv='\uFEFF'+[headers,...rows].map(row=>row.map(cell).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');
+  link.href=url;
+  link.download=`tasks-${person==='__today'?'today':person.toLowerCase()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function downloadPdf(){
+  const params=new URLSearchParams({
+    person,
+    status:$('#fs').value,
+    search:$('#q').value
+  });
+  const response=await fetch(`/api/tasks/export.pdf?${params}`);
+  if(!response.ok){
+    let message='Unable to download PDF';
+    try{ message=(await response.json()).error||message; }catch(e){ /* Keep the download error message. */ }
+    throw new Error(message);
+  }
+  const url=URL.createObjectURL(await response.blob());
+  const link=document.createElement('a');
+  link.href=url;
+  link.download=`tasks-${person==='__today'?'today':person.toLowerCase()}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function downloadSelected(){
+  const format=$('#download').value;
+  $('#download').value='';
+  try{
+    if(format==='csv') downloadCsv();
+    if(format==='pdf') await downloadPdf();
+  }catch(e){ alert(e.message); }
 }
 
 async function quickStatus(id,v){
@@ -105,6 +157,7 @@ $('#lGo').onclick=async()=>{ try{ await api('/api/login','POST',{name:$('#lName'
   catch(e){ $('#lErr').textContent=e.message; } };
 $('#out').onclick=async()=>{ await api('/api/logout','POST'); boot(); };
 $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; $('#mSave').onclick=save;
+$('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
 $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
 boot();
