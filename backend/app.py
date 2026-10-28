@@ -50,7 +50,8 @@ def run(sql, params=(), fetch=False):
 run("""CREATE TABLE IF NOT EXISTS tasks(
     id SERIAL PRIMARY KEY, person TEXT, date TEXT, task TEXT,
     department TEXT, req_from TEXT, status TEXT, completed_date TEXT)""")
-run("UPDATE tasks SET req_from = TRIM(REPLACE(req_from, ' Sir', '')) WHERE req_from LIKE '% Sir%'")  # cleanup of old names
+run("UPDATE tasks SET req_from = TRIM(REPLACE(req_from, ' Sir', '')) "
+    "WHERE POSITION(' Sir' IN req_from) > 0")  # cleanup of old names
 
 
 def today():
