@@ -7,6 +7,7 @@ from contextlib import closing
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify, session, render_template, abort, send_file
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -14,13 +15,16 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE, "..", "env"))
 FRONT = os.path.join(BASE, "..", "frontend")
 app = Flask(__name__, template_folder=os.path.join(FRONT, "html"), static_folder=FRONT, static_url_path="/static")
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
 
 # Neon connection string, e.g.
 # postgresql://user:pass@ep-xxxx-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it to the project-root env file or set it in the shell.")
 
 USERS = ["Dheeraj", "Vyshak", "Nahan", "Bana", "Shanto"]   # no PINs - just pick your name
 MEMBERS = ["Dheeraj", "Vyshak", "Nahan"]
