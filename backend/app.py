@@ -1,6 +1,12 @@
-"""Team Task Sheet - Flask backend.  Run:  pip install -r requirements.txt && python app.py"""
-import os, sqlite3, datetime as dt, html
+"""Team Task Sheet - Flask backend (Neon Postgres).
+Run:  pip install -r requirements.txt && set DATABASE_URL && python app.py
+"""
+import os, datetime as dt, html
 from io import BytesIO
+from contextlib import closing
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Flask, request, jsonify, session, render_template, abort, send_file
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -11,7 +17,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 FRONT = os.path.join(BASE, "..", "frontend")
 app = Flask(__name__, template_folder=os.path.join(FRONT, "html"), static_folder=FRONT, static_url_path="/static")
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
-DB = os.path.join(BASE, "tasks.db")
+
+# Neon connection string, e.g.
+# postgresql://user:pass@ep-xxxx-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 USERS = ["Dheeraj", "Vyshak", "Nahan", "Bana", "Shanto"]   # no PINs - just pick your name
 MEMBERS = ["Dheeraj", "Vyshak", "Nahan"]
@@ -25,17 +34,19 @@ DEPTS = ["Marketing", "Operation", "HR", "R&D", "Project Department"]
 REQ_FROM = ["Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan"]
 
 
-def db():
-    c = sqlite3.connect(DB)
-    c.row_factory = sqlite3.Row
-    return c
+def run(sql, params=(), fetch=False):
+    """Open a connection, run one statement, commit, close. Returns list of dicts if fetch=True."""
+    with closing(psycopg2.connect(DATABASE_URL)) as conn:
+        with conn:  # commits on success, rolls back on error
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return [dict(r) for r in cur.fetchall()] if fetch else None
 
 
-with db() as c:
-    c.execute("""CREATE TABLE IF NOT EXISTS tasks(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, person TEXT, date TEXT, task TEXT,
-        department TEXT, req_from TEXT, status TEXT, completed_date TEXT)""")
-    c.execute("UPDATE tasks SET req_from = TRIM(REPLACE(req_from, ' Sir', ''))")  # one-time cleanup of old names
+run("""CREATE TABLE IF NOT EXISTS tasks(
+    id SERIAL PRIMARY KEY, person TEXT, date TEXT, task TEXT,
+    department TEXT, req_from TEXT, status TEXT, completed_date TEXT)""")
+run("UPDATE tasks SET req_from = TRIM(REPLACE(req_from, ' Sir', '')) WHERE req_from LIKE '% Sir%'")  # cleanup of old names
 
 
 def today():
@@ -102,8 +113,8 @@ def tasks():
     p = target(request.args.get("person"))
     if not p:
         return jsonify(error="Not logged in"), 401
-    rows = db().execute("SELECT * FROM tasks WHERE person=? ORDER BY date DESC, id DESC", (p,)).fetchall()
-    return jsonify(tasks=[dict(r) for r in rows])
+    rows = run("SELECT * FROM tasks WHERE person=%s ORDER BY date DESC, id DESC", (p,), fetch=True)
+    return jsonify(tasks=rows)
 
 
 @app.get("/api/today")
@@ -112,14 +123,10 @@ def today_tasks():
     if not u:
         return jsonify(error="Not logged in"), 401
     people = SHEETS if u in (ADMIN, VIEWER) else [u]
-    q = ("SELECT * FROM tasks WHERE (date=? OR status='Pending') "
-         "AND person IN (%s) ORDER BY person, date DESC, id DESC") % ",".join("?" * len(people))
-    connection = db()
-    try:
-        rows = connection.execute(q, [today()] + people).fetchall()
-    finally:
-        connection.close()
-    return jsonify(tasks=[dict(r) for r in rows])
+    rows = run("SELECT * FROM tasks WHERE (date=%s OR status='Pending') "
+               "AND person = ANY(%s) ORDER BY person, date DESC, id DESC",
+               (today(), people), fetch=True)
+    return jsonify(tasks=rows)
 
 
 @app.get("/api/tasks/export.pdf")
@@ -135,18 +142,13 @@ def export_tasks_pdf():
     if status not in ("", "Pending", "Completed"):
         return jsonify(error="Invalid status"), 400
 
-    connection = db()
-    try:
-        if person == "__today":
-            q = ("SELECT * FROM tasks WHERE (date=? OR status='Pending') "
-                 "AND person IN (%s) ORDER BY person, date DESC, id DESC") % ",".join("?" * len(SHEETS))
-            rows = connection.execute(q, [today()] + SHEETS).fetchall()
-        else:
-            rows = connection.execute(
-                "SELECT * FROM tasks WHERE person=? ORDER BY date DESC, id DESC", (person,)
-            ).fetchall()
-    finally:
-        connection.close()
+    if person == "__today":
+        rows = run("SELECT * FROM tasks WHERE (date=%s OR status='Pending') "
+                   "AND person = ANY(%s) ORDER BY person, date DESC, id DESC",
+                   (today(), SHEETS), fetch=True)
+    else:
+        rows = run("SELECT * FROM tasks WHERE person=%s ORDER BY date DESC, id DESC",
+                   (person,), fetch=True)
 
     def matches(row):
         return (not status or row["status"] == status) and (
@@ -228,13 +230,12 @@ def save():
     status = "Completed" if d.get("status") == "Completed" else "Pending"
     done = (d.get("completed_date") or today()) if status == "Completed" else ""  # auto date
     vals = (d.get("date") or today(), d["task"].strip(), d.get("department", ""), d.get("req_from", ""), status, done)
-    with db() as c:
-        if d.get("id"):
-            c.execute("UPDATE tasks SET date=?,task=?,department=?,req_from=?,status=?,completed_date=? "
-                      "WHERE id=? AND person=?", vals + (d["id"], p))
-        else:
-            c.execute("INSERT INTO tasks(date,task,department,req_from,status,completed_date,person) "
-                      "VALUES(?,?,?,?,?,?,?)", vals + (p,))
+    if d.get("id"):
+        run("UPDATE tasks SET date=%s,task=%s,department=%s,req_from=%s,status=%s,completed_date=%s "
+            "WHERE id=%s AND person=%s", vals + (d["id"], p))
+    else:
+        run("INSERT INTO tasks(date,task,department,req_from,status,completed_date,person) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s)", vals + (p,))
     return jsonify(ok=True)
 
 
@@ -242,8 +243,9 @@ def save():
 def summary():
     if user() not in (ADMIN, VIEWER):
         return jsonify(error="Not allowed"), 403
-    q = "SELECT person, department, req_from, status FROM tasks WHERE person IN (%s)" % ",".join("?" * len(SHEETS))
-    return jsonify(rows=[dict(r) for r in db().execute(q, SHEETS).fetchall()])
+    rows = run("SELECT person, department, req_from, status FROM tasks WHERE person = ANY(%s)",
+               (SHEETS,), fetch=True)
+    return jsonify(rows=rows)
 
 
 @app.delete("/api/tasks/<int:tid>")
@@ -251,10 +253,10 @@ def delete(tid):
     p = target(request.args.get("person"), True)
     if not p:
         return jsonify(error="Not allowed"), 403
-    with db() as c:
-        c.execute("DELETE FROM tasks WHERE id=? AND person=?", (tid, p))
+    run("DELETE FROM tasks WHERE id=%s AND person=%s", (tid, p))
     return jsonify(ok=True)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # For production use:  gunicorn app:app
+    app.run(host="0.0.0.0", port=5000, debug=os.environ.get("FLASK_DEBUG") == "1")

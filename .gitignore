@@ -1,3 +1,6 @@
-backend/tasks.db
 __pycache__/
-*.py[cod]
+*.pyc
+.env
+tasks.db
+venv/
+.venv/

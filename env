@@ -1,0 +1,4 @@
+# Set these as environment variables (or in your host's settings). Never commit real values.
+DATABASE_URL=postgresql://neondb_owner:npg_Wmu4kFBvlap2@ep-orange-math-b4uml7m2-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+SECRET_KEY=DSHDCJSCNBDVDFBSDHBD
+ADMIN_KEY=[put-your-private-leadership-key-here](http://localhost:5000/leadership/bana-private-link)
