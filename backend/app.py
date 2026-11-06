@@ -35,7 +35,7 @@ SHEETS = MEMBERS + ["Bana"]
 ADMIN = "Bana"      # sees + edits every sheet
 VIEWER = "Shanto"   # view-only access to every sheet
 DEPTS = ["Marketing", "Operation", "HR", "R&D", "Project Department"]
-REQ_FROM = ["Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan"]
+REQ_FROM = ["Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan", "Branch Managers"]
 
 
 def run(sql, params=(), fetch=False):

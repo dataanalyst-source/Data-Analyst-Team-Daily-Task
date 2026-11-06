@@ -19,7 +19,7 @@ async function boot(){
 function start(){
   $('#login').hidden=true; $('#app').hidden=false;
   $('#who').textContent=(S.role=='admin'?'Admin · ':S.role=='viewer'?'Viewer · ':'')+S.user; $('#add').hidden=!S.canEdit;
-  opts($('#mDept'),S.departments); opts($('#mReq'),[...S.reqFrom,MAN]);
+  opts($('#mDept'),[...S.departments,MAN]); opts($('#mReq'),[...S.reqFrom,MAN]);
   opts($('#mPerson'),S.people);
   $('#tabs').hidden=false;
   $('#tabs').innerHTML=(S.role!=='member'?'<button class="tab" data-p="__sum">Summary</button>':'')
@@ -123,6 +123,7 @@ async function quickStatus(id,v){
   person==='__today'?loadToday():load();
 }
 function reqUI(){ $('#mMan').hidden=$('#mReq').value!==MAN; }
+function deptUI(){ $('#mDeptMan').hidden=$('#mDept').value!==MAN; }
 function stUI(){
   const done=$('#mSt').value==='Completed'; $('#dBox').hidden=!done;
   if(done&&!$('#mDone').value) $('#mDone').value=S.today; if(!done) $('#mDone').value='';
@@ -135,19 +136,24 @@ function openForm(id){
   $('#personBox').hidden=!(person==='__today'&&S.role==='admin'&&!t);
   $('#mPerson').value=formPerson;
   $('#mDate').value=t?t.date:S.today; $('#mTask').value=t?t.task:'';
-  $('#mDept').value=t?t.department:S.departments[0]; $('#mSt').value=t?t.status:'Pending';
+  const manualDept=t&&t.department&&!S.departments.includes(t.department);
+  $('#mDept').value=manualDept?MAN:(t?t.department:S.departments[0]);
+  $('#mDeptMan').value=manualDept?t.department:'';
+  $('#mSt').value=t?t.status:'Pending';
   $('#mDone').value=t?t.completed_date:'';
   const manual=t&&t.req_from&&!S.reqFrom.includes(t.req_from);
   $('#mReq').value=manual?MAN:(t?t.req_from:S.reqFrom[0]); $('#mMan').value=manual?t.req_from:'';
-  $('#mDel').hidden=!t; $('#mErr').textContent=''; reqUI(); stUI(); $('#modal').hidden=false;
+  $('#mDel').hidden=!t; $('#mErr').textContent=''; deptUI(); reqUI(); stUI(); $('#modal').hidden=false;
 }
 async function save(){
+  const department=$('#mDept').value===MAN?$('#mDeptMan').value.trim():$('#mDept').value;
   const req=$('#mReq').value===MAN?$('#mMan').value.trim():$('#mReq').value;
   if(!$('#mTask').value.trim()) return $('#mErr').textContent='Please enter the task';
+  if(!department) return $('#mErr').textContent='Please enter the department';
   if(!req) return $('#mErr').textContent='Please enter who requested it';
   try{
     formPerson=person==='__today'&&S.role==='admin'&&!editId?$('#mPerson').value:formPerson;
-    await api('/api/tasks','POST',{id:editId,person:formPerson,date:$('#mDate').value,task:$('#mTask').value,department:$('#mDept').value,
+    await api('/api/tasks','POST',{id:editId,person:formPerson,date:$('#mDate').value,task:$('#mTask').value,department,
       req_from:req,status:$('#mSt').value,completed_date:$('#mDone').value});
     $('#modal').hidden=true; person==='__today'?loadToday():load();
   }catch(e){ $('#mErr').textContent=e.message; }
@@ -159,5 +165,5 @@ $('#out').onclick=async()=>{ await api('/api/logout','POST'); boot(); };
 $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; $('#mSave').onclick=save;
 $('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
-$('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
+$('#mDept').onchange=deptUI; $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
 boot();

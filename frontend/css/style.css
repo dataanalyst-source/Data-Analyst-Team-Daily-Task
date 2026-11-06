@@ -42,7 +42,7 @@ td.t{max-width:340px;font-weight:500}
 .badge{padding:3px 11px;border-radius:99px;font-size:12px;font-weight:600}
 .Pending{background:rgba(251,191,36,.15);color:#f59e0b}.Completed{background:rgba(52,211,153,.15);color:#10b981}
 .edit{background:0;border:1px solid var(--line);color:var(--text);padding:5px 12px;border-radius:8px;cursor:pointer}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form input[hidden]+*{margin-top:0}#mMan{margin-top:8px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form input[hidden]+*{margin-top:0}#mDeptMan,#mMan{margin-top:8px}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.kp button{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--in);color:var(--text);font:600 16px Lora,Georgia,serif;cursor:pointer}.kp button:active{background:var(--a);color:#fff}
 .sumc{padding:16px;margin-top:16px}.sumc h3{margin:0 0 8px;font-size:15px}.sumc table{min-width:520px}
 .bar{height:8px;border-radius:99px;background:var(--in);border:1px solid var(--line);min-width:90px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--b))}
