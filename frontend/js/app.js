@@ -3,7 +3,15 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const taskLabel=s=>String(s??'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\b(ai|csv|crm|rm)\b/gi,c=>c.toUpperCase());
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const fmt=d=>{if(!d)return'—';const[y,m,x]=d.split('-');return `${x} ${MON[m-1]} ${y}`};
-let S,person,tasks=[],visibleTasks=[],selectedTitles=new Set(),editId=null,formPerson=null;
+let S,person,tasks=[],visibleTasks=[],columnFilters=new Map(),sortState=null,filterDraft=null,editId=null,formPerson=null;
+const TABLE_COLUMNS=[
+  {field:'date',label:'Date'},
+  {field:'task',label:'Task'},
+  {field:'department',label:'Department'},
+  {field:'req_from',label:'Req from'},
+  {field:'status',label:'Status'},
+  {field:'completed_date',label:'Completed'}
+];
 
 async function api(p,m='GET',b){
   const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
@@ -29,12 +37,11 @@ function start(){
   pick(S.role==='member'?S.people[0]:'__sum');
 }
 function pick(p){
+  closeColumnFilter(); columnFilters.clear(); sortState=null;
   person=p; const sm=p==='__sum';
   const td=p==='__today';
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
   $('#sheet').hidden=sm; $('#stats').hidden=sm; $('#sum').hidden=!sm;
-  $('#personHead').hidden=!td;
-  $('#actionHead').hidden=td;
   $('#download').hidden=S.role!=='admin'||sm;
   $('#add').hidden=!S.canEdit||td;
   sm?summary():td?loadToday():load();
@@ -49,47 +56,124 @@ async function summary(){
   $('#sum').innerHTML=`<div class="stats">${[['Total tasks',rows.length],['Pending',rows.length-C],['Completed',C]].map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>`
     +tbl('Team',agg('person',S.people),'Member')+tbl('Department',agg('department',S.departments),'Department')+tbl('Requested From',agg('req_from',S.reqFrom),'Req from');
 }
-function setFilterOptions(selector,label,values){
-  const el=$(selector), selected=el.value;
-  const options=[...new Set(values.filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  el.innerHTML=`<option value="">All ${label}</option>`+options.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
-  el.value=options.includes(selected)?selected:'';
+function columnValue(row,field){ return String(row[field]??''); }
+function columnDisplay(field,value){
+  if(!value) return '(Blanks)';
+  if(field==='date'||field==='completed_date') return fmt(value);
+  return field==='task'?taskLabel(value):value;
 }
-function updateFilterOptions(){
-  setFilterOptions('#fd','departments',tasks.map(t=>t.department||''));
-  setFilterOptions('#fr','requesters',tasks.map(t=>t.req_from||''));
-  const titles=[...new Set(tasks.map(t=>t.task).filter(t=>typeof t==='string'&&t.trim()))]
-    .sort((a,b)=>taskLabel(a).localeCompare(taskLabel(b)));
-  selectedTitles=new Set([...selectedTitles].filter(title=>titles.includes(title)));
-  $('#titleFilterOptions').innerHTML=titles.map(title=>`<label><input type="checkbox" value="${esc(title)}"${selectedTitles.has(title)?' checked':''}>${esc(taskLabel(title))}</label>`).join('')
-    ||'<div class="muted">No task titles</div>';
-  $('#titleFilterOptions').querySelectorAll('input').forEach(input=>input.onchange=()=>{
-    if(input.checked) selectedTitles.add(input.value); else selectedTitles.delete(input.value);
-    updateTitleFilterLabel();
-    render();
+function visibleColumns(todayView){
+  return todayView?[{field:'person',label:'Member'},...TABLE_COLUMNS]:TABLE_COLUMNS;
+}
+function closeColumnFilter(){
+  const menu=$('#columnFilterMenu');
+  if(menu) menu.hidden=true;
+  filterDraft=null;
+}
+function openColumnFilter(field,button){
+  const values=[...new Set(tasks.map(task=>columnValue(task,field)))]
+    .sort((a,b)=>columnDisplay(field,a).localeCompare(columnDisplay(field,b)));
+  filterDraft={field,values,selected:new Set(columnFilters.get(field)||values)};
+  const menu=$('#columnFilterMenu');
+  menu.innerHTML=`<div class="column-filter-sort">
+      <button type="button" data-sort="asc">Sort Ascending</button>
+      <button type="button" data-sort="desc">Sort Descending</button>
+    </div>
+    <input id="columnFilterSearch" type="search" placeholder="Search values..." aria-label="Search filter values">
+    <label class="column-select-all"><input id="columnSelectAll" type="checkbox">Select all</label>
+    <div id="columnFilterValues"></div>
+    <div class="column-filter-actions">
+      <button type="button" data-action="clear">Clear filter</button>
+      <span><button type="button" data-action="cancel">Cancel</button><button type="button" data-action="apply">OK</button></span>
+    </div>`;
+  menu.hidden=false;
+  renderColumnFilterValues();
+  const rect=button.getBoundingClientRect();
+  menu.style.left=`${Math.max(8,Math.min(rect.left,window.innerWidth-286))}px`;
+  menu.style.top='8px';
+  const menuHeight=menu.offsetHeight;
+  const below=rect.bottom+4;
+  menu.style.top=`${below+menuHeight<=window.innerHeight-8?below:Math.max(8,rect.top-menuHeight-4)}px`;
+  menu.querySelector('[data-sort="asc"]').onclick=()=>sortColumn(field,'asc');
+  menu.querySelector('[data-sort="desc"]').onclick=()=>sortColumn(field,'desc');
+  menu.querySelector('[data-action="clear"]').onclick=()=>{
+    columnFilters.delete(field); closeColumnFilter(); render();
+  };
+  menu.querySelector('[data-action="cancel"]').onclick=closeColumnFilter;
+  menu.querySelector('[data-action="apply"]').onclick=()=>{
+    if(filterDraft.selected.size===filterDraft.values.length) columnFilters.delete(field);
+    else columnFilters.set(field,new Set(filterDraft.selected));
+    closeColumnFilter(); render();
+  };
+  $('#columnFilterSearch').oninput=renderColumnFilterValues;
+  $('#columnSelectAll').onchange=()=>{
+    const visibleFilterValues=filteredColumnValues();
+    visibleFilterValues.forEach(value=>{
+      if($('#columnSelectAll').checked) filterDraft.selected.add(value);
+      else filterDraft.selected.delete(value);
+    });
+    renderColumnFilterValues();
+  };
+}
+function filteredColumnValues(){
+  const search=$('#columnFilterSearch').value.trim().toLowerCase();
+  return filterDraft.values.filter(value=>columnDisplay(filterDraft.field,value).toLowerCase().includes(search));
+}
+function renderColumnFilterValues(){
+  const values=filteredColumnValues();
+  $('#columnFilterValues').innerHTML=values.map(value=>`<label><input type="checkbox" value="${esc(value)}"${filterDraft.selected.has(value)?' checked':''}>${esc(columnDisplay(filterDraft.field,value))}</label>`).join('')
+    ||'<div class="muted column-no-values">No matching values</div>';
+  $('#columnFilterValues').querySelectorAll('input').forEach(input=>input.onchange=()=>{
+    if(input.checked) filterDraft.selected.add(input.value);
+    else filterDraft.selected.delete(input.value);
+    renderColumnFilterValues();
   });
-  updateTitleFilterLabel();
+  const selectAll=$('#columnSelectAll');
+  const selectedCount=values.filter(value=>filterDraft.selected.has(value)).length;
+  selectAll.checked=values.length>0&&selectedCount===values.length;
+  selectAll.indeterminate=selectedCount>0&&selectedCount<values.length;
+  selectAll.disabled=values.length===0;
 }
-function updateTitleFilterLabel(){
-  const count=selectedTitles.size;
-  $('#titleFilterLabel').textContent=count?`${count} title${count===1?'':'s'} selected`:'All task titles';
+function sortColumn(field,direction){
+  sortState={field,direction}; closeColumnFilter(); render();
 }
-async function load(){ tasks=(await api('/api/tasks?person='+encodeURIComponent(person))).tasks; updateFilterOptions(); render(); }
-async function loadToday(){ tasks=(await api('/api/today')).tasks; updateFilterOptions(); render(); }
+async function load(){ tasks=(await api('/api/tasks?person='+encodeURIComponent(person))).tasks; render(); }
+async function loadToday(){ tasks=(await api('/api/today')).tasks; render(); }
 
 function render(){
-  const todayView=person==='__today';
+  const todayView=person==='__today', columns=visibleColumns(todayView);
   const n=s=>tasks.filter(t=>t.status===s).length;
   $('#stats').innerHTML=[['Total',tasks.length],['Pending',n('Pending')],['Completed',n('Completed')]]
     .map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  const q=$('#q').value.toLowerCase(), fs=$('#fs').value, fd=$('#fd').value, fr=$('#fr').value;
-  const list=tasks.filter(t=>(!selectedTitles.size||selectedTitles.has(t.task))&&(!fs||t.status===fs)&&(!fd||t.department===fd)&&(!fr||t.req_from===fr)
-    &&(!q||(t.task+t.department+t.req_from+(todayView?t.person:'')).toLowerCase().includes(q)));
+  $('#head').innerHTML=columns.map(({field,label})=>`<th><div class="column-heading"><span>${label}</span><button type="button" class="column-filter-trigger${columnFilters.has(field)?' active':''}" data-field="${field}" aria-label="Filter ${label}" title="Filter ${label}">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12L9.5 8v4l-3 1V8L2 3z"></path></svg></button></div></th>`).join('')
+    +(S.canEdit&&!todayView?'<th></th>':'');
+  $('#head').querySelectorAll('.column-filter-trigger').forEach(button=>button.onclick=event=>{
+    event.stopPropagation(); openColumnFilter(button.dataset.field,button);
+  });
+  const query=$('#q').value.trim().toLowerCase();
+  let list=tasks.filter(task=>{
+    const searchText=columns.map(({field})=>columnValue(task,field)).join(' ').toLowerCase();
+    const matchesFilters=[...columnFilters].every(([field,values])=>values.has(columnValue(task,field)));
+    return matchesFilters&&(!query||searchText.includes(query));
+  });
+  if(sortState&&columns.some(column=>column.field===sortState.field)){
+    const {field,direction}=sortState;
+    list=list.slice().sort((a,b)=>{
+      const left=field==='date'||field==='completed_date'?columnValue(a,field):columnDisplay(field,columnValue(a,field));
+      const right=field==='date'||field==='completed_date'?columnValue(b,field):columnDisplay(field,columnValue(b,field));
+      const compared=left.localeCompare(right);
+      return direction==='asc'?compared:-compared;
+    });
+  }
   visibleTasks=list;
   $('#empty').hidden=list.length>0;
-  $('#body').innerHTML=list.map(t=>`<tr>${todayView?`<td>${esc(t.person)}</td>`:''}<td>${fmt(t.date)}</td><td class="t">${esc(taskLabel(t.task))}</td><td>${esc(t.department)}</td>
-    <td>${esc(t.req_from)}</td><td>${S.canEdit&&!todayView?`<select class="stsel ${t.status}" onchange="quickStatus(${t.id},this.value)"><option${t.status==='Pending'?' selected':''}>Pending</option><option${t.status==='Completed'?' selected':''}>Completed</option></select>`:`<span class="badge ${t.status}">${t.status}</span>`}</td><td>${fmt(t.completed_date)}</td>
-    ${todayView?'':`<td>${S.canEdit?`<button class="edit" onclick="openForm(${t.id})">Edit</button>`:''}</td>`}</tr>`).join('');
+  $('#body').innerHTML=list.map(task=>`<tr>${columns.map(({field})=>{
+    const value=columnValue(task,field);
+    if(field==='status'&&S.canEdit&&!todayView) return `<td><select class="stsel ${esc(value)}" onchange="quickStatus(${task.id},this.value)"><option${value==='Pending'?' selected':''}>Pending</option><option${value==='Completed'?' selected':''}>Completed</option></select></td>`;
+    const display=field==='date'||field==='completed_date'?fmt(value):field==='task'?taskLabel(value):value||'—';
+    return `<td${field==='task'?' class="t"':''}>${esc(display)}</td>`;
+  }).join('')}${S.canEdit&&!todayView?`<td><button class="edit" onclick="openForm(${task.id})">Edit</button></td>`:''}</tr>`).join('');
 }
 
 function downloadCsv(){
@@ -112,14 +196,15 @@ function downloadCsv(){
 }
 
 async function downloadPdf(){
-  const params=new URLSearchParams({
-    person,
-    status:$('#fs').value,
-    search:$('#q').value,
-    department:$('#fd').value,
-    req_from:$('#fr').value
+  const params=new URLSearchParams({person,search:$('#q').value});
+  columnFilters.forEach((values,field)=>{
+    params.append('filter_field',field);
+    values.forEach(value=>params.append(`filter_${field}`,value));
   });
-  selectedTitles.forEach(title=>params.append('task_title',title));
+  if(sortState){
+    params.set('sort_field',sortState.field);
+    params.set('sort_direction',sortState.direction);
+  }
   const response=await fetch(`/api/tasks/export.pdf?${params}`);
   if(!response.ok){
     let message='Unable to download PDF';
@@ -220,6 +305,8 @@ $('#out').onclick=async()=>{ await api('/api/logout','POST'); boot(); };
 $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; $('#mSave').onclick=save;
 $('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
-$('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render; $('#fd').onchange=render; $('#fr').onchange=render;
-$('#clearTitles').onclick=()=>{ selectedTitles.clear(); $('#titleFilterOptions').querySelectorAll('input').forEach(input=>input.checked=false); updateTitleFilterLabel(); render(); };
+$('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render;
+document.addEventListener('click',event=>{
+  if(filterDraft&&!$('#columnFilterMenu').contains(event.target)&&!event.target.closest('.column-filter-trigger')) closeColumnFilter();
+});
 boot();

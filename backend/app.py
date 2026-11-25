@@ -186,15 +186,20 @@ def export_tasks_pdf():
         return jsonify(error="Not allowed"), 403
 
     person = request.args.get("person", "")
-    status = request.args.get("status", "")
     search = request.args.get("search", "").strip().lower()
-    department = request.args.get("department", "")
-    req_from = request.args.get("req_from", "")
-    task_titles = request.args.getlist("task_title")
+    filterable_fields = {"person", "date", "task", "department", "req_from", "status", "completed_date"}
+    filter_fields = set(request.args.getlist("filter_field"))
+    sort_field = request.args.get("sort_field", "")
+    sort_direction = request.args.get("sort_direction", "asc")
     if person != "__today" and person not in SHEETS:
         return jsonify(error="Invalid task sheet"), 400
-    if status not in ("", "Pending", "Completed"):
-        return jsonify(error="Invalid status"), 400
+    if not filter_fields.issubset(filterable_fields):
+        return jsonify(error="Invalid filter field"), 400
+    if sort_field and sort_field not in filterable_fields:
+        return jsonify(error="Invalid sort field"), 400
+    if sort_direction not in ("asc", "desc"):
+        return jsonify(error="Invalid sort direction"), 400
+    filters = {field: set(request.args.getlist(f"filter_{field}")) for field in filter_fields}
 
     if person == "__today":
         rows = run("SELECT * FROM tasks WHERE (date=%s OR status='Pending') "
@@ -205,16 +210,18 @@ def export_tasks_pdf():
                    (person,), fetch=True)
 
     def matches(row):
-        return (not status or row["status"] == status) \
-            and (not department or row["department"] == department) \
-            and (not req_from or row["req_from"] == req_from) \
-            and (not task_titles or row["task"] in task_titles) and (
-            not search or search in ((row["task"] or "") + (row["department"] or "")
-                                     + (row["req_from"] or "")
-                                     + ((row["person"] or "") if person == "__today" else "")).lower()
+        return all(str(row.get(field) or "") in values for field, values in filters.items()) and (
+            not search or search in " ".join(
+                str(row.get(field) or "")
+                for field in ("date", "task", "department", "req_from", "status", "completed_date")
+                + (("person",) if person == "__today" else ())
+            ).lower()
         )
 
     rows = [row for row in rows if matches(row)]
+    if sort_field:
+        rows.sort(key=lambda row: str(row.get(sort_field) or "").casefold(),
+                  reverse=sort_direction == "desc")
     today_view = person == "__today"
     headers = (["Member"] if today_view else []) + [
         "Date", "Task", "Department", "Req from", "Status", "Completed"

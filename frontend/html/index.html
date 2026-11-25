@@ -34,27 +34,18 @@
     <div class="glass" id="sheet">
       <div class="tools">
         <input id="q" placeholder="Search tasks…">
-        <select id="fs"><option value="">All status</option><option>Pending</option><option>Completed</option></select>
-        <select id="fd" aria-label="Filter by department"><option value="">All departments</option></select>
-        <select id="fr" aria-label="Filter by requester"><option value="">All requesters</option></select>
-        <details id="titleFilter" class="title-filter">
-          <summary id="titleFilterLabel">All task titles</summary>
-          <div class="title-filter-menu">
-            <button type="button" id="clearTitles" class="clear-filter">Clear selection</button>
-            <div id="titleFilterOptions"></div>
-          </div>
-        </details>
         <select id="download" class="download" aria-label="Download tasks" hidden>
           <option value="">Download…</option><option value="csv">CSV</option><option value="pdf">PDF</option>
         </select>
         <button class="btn" id="add">+ Add task</button>
       </div>
       <div class="tw"><table>
-        <thead><tr><th id="personHead" hidden>Member</th><th>Date</th><th>Task</th><th>Department</th><th>Req from</th><th>Status</th><th>Completed</th><th id="actionHead"></th></tr></thead>
+        <thead><tr id="head"></tr></thead>
         <tbody id="body"></tbody>
       </table></div>
       <div id="empty" class="muted pad" hidden>No tasks found</div>
     </div>
+    <div id="columnFilterMenu" class="column-filter-menu" hidden></div>
   </main>
 </div>
 

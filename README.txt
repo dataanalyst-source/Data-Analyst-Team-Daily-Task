@@ -16,8 +16,9 @@ Dildar and Shanto are available for Operation by default; Branch Managers is exc
 from Operation and Dildar is excluded from HR. Stephin is available for SCM by default.
 Existing requester names are normalized to title case at startup; the literal value
 "none" stays lowercase.
-The task sheet supports text search, status, department, requester, and single- or
-multi-title filters. Filtered results are used for CSV and PDF downloads.
+The task sheet supports Excel-style filters on every data column, including sorting,
+value search, and single- or multi-value selection. Filtered results are used for CSV
+and PDF downloads.
 Task titles are displayed in title case with common acronyms preserved; stored task text
 and exported values remain unchanged.
 
