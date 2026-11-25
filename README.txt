@@ -12,8 +12,11 @@ Run:
 
 Requested From options are filtered by department and learned from saved tasks.
 Manually entered requester names become dropdown options for that department after saving.
-Dildar and Shanto are available for Operation by default. Existing requester names
-are normalized to title case at startup; the literal value "none" stays lowercase.
+Dildar and Shanto are available for Operation by default; Branch Managers is excluded
+from Operation and Dildar is excluded from HR. Existing requester names are normalized
+to title case at startup; the literal value "none" stays lowercase.
+The task sheet supports text search plus status, department, and requester filters.
+Filtered results are used for CSV and PDF downloads.
 
 The app loads DATABASE_URL, SECRET_KEY, and ADMIN_KEY from the project-root env file. You can also set them in the shell.
 

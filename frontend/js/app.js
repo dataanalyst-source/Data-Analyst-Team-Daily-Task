@@ -48,16 +48,27 @@ async function summary(){
   $('#sum').innerHTML=`<div class="stats">${[['Total tasks',rows.length],['Pending',rows.length-C],['Completed',C]].map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>`
     +tbl('Team',agg('person',S.people),'Member')+tbl('Department',agg('department',S.departments),'Department')+tbl('Requested From',agg('req_from',S.reqFrom),'Req from');
 }
-async function load(){ tasks=(await api('/api/tasks?person='+encodeURIComponent(person))).tasks; render(); }
-async function loadToday(){ tasks=(await api('/api/today')).tasks; render(); }
+function setFilterOptions(selector,label,values){
+  const el=$(selector), selected=el.value;
+  const options=[...new Set(values.filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  el.innerHTML=`<option value="">All ${label}</option>`+options.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+  el.value=options.includes(selected)?selected:'';
+}
+function updateFilterOptions(){
+  setFilterOptions('#fd','departments',tasks.map(t=>t.department||''));
+  setFilterOptions('#fr','requesters',tasks.map(t=>t.req_from||''));
+}
+async function load(){ tasks=(await api('/api/tasks?person='+encodeURIComponent(person))).tasks; updateFilterOptions(); render(); }
+async function loadToday(){ tasks=(await api('/api/today')).tasks; updateFilterOptions(); render(); }
 
 function render(){
   const todayView=person==='__today';
   const n=s=>tasks.filter(t=>t.status===s).length;
   $('#stats').innerHTML=[['Total',tasks.length],['Pending',n('Pending')],['Completed',n('Completed')]]
     .map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  const q=$('#q').value.toLowerCase(), fs=$('#fs').value;
-  const list=tasks.filter(t=>(!fs||t.status===fs)&&(!q||(t.task+t.department+t.req_from+(todayView?t.person:'')).toLowerCase().includes(q)));
+  const q=$('#q').value.toLowerCase(), fs=$('#fs').value, fd=$('#fd').value, fr=$('#fr').value;
+  const list=tasks.filter(t=>(!fs||t.status===fs)&&(!fd||t.department===fd)&&(!fr||t.req_from===fr)
+    &&(!q||(t.task+t.department+t.req_from+(todayView?t.person:'')).toLowerCase().includes(q)));
   visibleTasks=list;
   $('#empty').hidden=list.length>0;
   $('#body').innerHTML=list.map(t=>`<tr>${todayView?`<td>${esc(t.person)}</td>`:''}<td>${fmt(t.date)}</td><td class="t">${esc(t.task)}</td><td>${esc(t.department)}</td>
@@ -88,7 +99,9 @@ async function downloadPdf(){
   const params=new URLSearchParams({
     person,
     status:$('#fs').value,
-    search:$('#q').value
+    search:$('#q').value,
+    department:$('#fd').value,
+    req_from:$('#fr').value
   });
   const response=await fetch(`/api/tasks/export.pdf?${params}`);
   if(!response.ok){
@@ -176,7 +189,7 @@ async function save(){
     const saved=await api('/api/tasks','POST',{id:editId,person:formPerson,date:$('#mDate').value,task:$('#mTask').value,department,
       req_from:req,status:$('#mSt').value,completed_date:$('#mDone').value});
     S.requestersByDepartment[department]??=[];
-    if(!S.requestersByDepartment[department].includes(saved.req_from)){
+    if(!saved.requester_excluded&&!S.requestersByDepartment[department].includes(saved.req_from)){
       S.requestersByDepartment[department].push(saved.req_from);
       S.requestersByDepartment[department].sort((a,b)=>a.localeCompare(b));
     }
@@ -190,5 +203,5 @@ $('#out').onclick=async()=>{ await api('/api/logout','POST'); boot(); };
 $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; $('#mSave').onclick=save;
 $('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
-$('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
+$('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render; $('#fd').onchange=render; $('#fr').onchange=render;
 boot();

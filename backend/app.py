@@ -40,6 +40,10 @@ REQ_FROM = [
     "Fariz", "Abhilash", "Najim", "Stephin", "Shabeeb", "Bana", "Nandhana", "none",
 ]
 DEPT_REQUESTERS = {"Operation": ["Dildar", "Shanto"]}
+DEPT_REQUESTER_EXCLUSIONS = {
+    "Operation": {"branch managers"},
+    "HR": {"dildar"},
+}
 
 
 def normalize_requester(value):
@@ -53,6 +57,11 @@ def normalize_department(value):
                  if department.casefold() == value.casefold()), value)
 
 
+def requester_excluded(department, requester):
+    department = normalize_department(department)
+    return normalize_requester(requester).casefold() in DEPT_REQUESTER_EXCLUSIONS.get(department, set())
+
+
 def requesters_by_department():
     rows = run("""SELECT DISTINCT department, req_from FROM tasks
                   WHERE department IS NOT NULL AND req_from IS NOT NULL
@@ -63,6 +72,8 @@ def requesters_by_department():
     for row in rows:
         department = normalize_department(row["department"])
         requester = normalize_requester(row["req_from"])
+        if requester_excluded(department, requester):
+            continue
         options.setdefault(department, set()).add(requester)
     return {department: sorted(requesters, key=str.casefold)
             for department, requesters in options.items()}
@@ -177,6 +188,8 @@ def export_tasks_pdf():
     person = request.args.get("person", "")
     status = request.args.get("status", "")
     search = request.args.get("search", "").strip().lower()
+    department = request.args.get("department", "")
+    req_from = request.args.get("req_from", "")
     if person != "__today" and person not in SHEETS:
         return jsonify(error="Invalid task sheet"), 400
     if status not in ("", "Pending", "Completed"):
@@ -191,7 +204,9 @@ def export_tasks_pdf():
                    (person,), fetch=True)
 
     def matches(row):
-        return (not status or row["status"] == status) and (
+        return (not status or row["status"] == status) \
+            and (not department or row["department"] == department) \
+            and (not req_from or row["req_from"] == req_from) and (
             not search or search in ((row["task"] or "") + (row["department"] or "")
                                      + (row["req_from"] or "")
                                      + ((row["person"] or "") if person == "__today" else "")).lower()
@@ -282,7 +297,8 @@ def save():
     else:
         run("INSERT INTO tasks(date,task,department,req_from,status,completed_date,person) "
             "VALUES(%s,%s,%s,%s,%s,%s,%s)", vals + (p,))
-    return jsonify(ok=True, req_from=requester)
+    return jsonify(ok=True, req_from=requester,
+                   requester_excluded=requester_excluded(d.get("department", ""), requester))
 
 
 @app.get("/api/summary")
