@@ -34,12 +34,12 @@ ADMIN_KEY = os.environ.get("ADMIN_KEY", "bana-private-link")
 SHEETS = MEMBERS + ["Bana"]
 ADMIN = "Bana"      # sees + edits every sheet
 VIEWER = "Shanto"   # view-only access to every sheet
-DEPTS = ["Marketing", "Operation", "HR", "R&D", "Project Department"]
+DEPTS = ["Marketing", "Operation", "HR", "R&D", "Project Department", "SCM"]
 REQ_FROM = [
     "Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan", "Branch Managers",
     "Fariz", "Abhilash", "Najim", "Stephin", "Shabeeb", "Bana", "Nandhana", "none",
 ]
-DEPT_REQUESTERS = {"Operation": ["Dildar", "Shanto"]}
+DEPT_REQUESTERS = {"Operation": ["Dildar", "Shanto"], "SCM": ["Stephin"]}
 DEPT_REQUESTER_EXCLUSIONS = {
     "Operation": {"branch managers"},
     "HR": {"dildar"},
@@ -190,6 +190,7 @@ def export_tasks_pdf():
     search = request.args.get("search", "").strip().lower()
     department = request.args.get("department", "")
     req_from = request.args.get("req_from", "")
+    task_titles = request.args.getlist("task_title")
     if person != "__today" and person not in SHEETS:
         return jsonify(error="Invalid task sheet"), 400
     if status not in ("", "Pending", "Completed"):
@@ -206,7 +207,8 @@ def export_tasks_pdf():
     def matches(row):
         return (not status or row["status"] == status) \
             and (not department or row["department"] == department) \
-            and (not req_from or row["req_from"] == req_from) and (
+            and (not req_from or row["req_from"] == req_from) \
+            and (not task_titles or row["task"] in task_titles) and (
             not search or search in ((row["task"] or "") + (row["department"] or "")
                                      + (row["req_from"] or "")
                                      + ((row["person"] or "") if person == "__today" else "")).lower()

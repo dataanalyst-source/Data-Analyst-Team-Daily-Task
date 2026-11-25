@@ -1,8 +1,9 @@
 const $=s=>document.querySelector(s), MAN='Other (type manually)';
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const taskLabel=s=>String(s??'').toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\b(ai|csv|crm|rm)\b/gi,c=>c.toUpperCase());
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const fmt=d=>{if(!d)return'—';const[y,m,x]=d.split('-');return `${x} ${MON[m-1]} ${y}`};
-let S,person,tasks=[],visibleTasks=[],editId=null,formPerson=null;
+let S,person,tasks=[],visibleTasks=[],selectedTitles=new Set(),editId=null,formPerson=null;
 
 async function api(p,m='GET',b){
   const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
@@ -57,6 +58,21 @@ function setFilterOptions(selector,label,values){
 function updateFilterOptions(){
   setFilterOptions('#fd','departments',tasks.map(t=>t.department||''));
   setFilterOptions('#fr','requesters',tasks.map(t=>t.req_from||''));
+  const titles=[...new Set(tasks.map(t=>t.task).filter(t=>typeof t==='string'&&t.trim()))]
+    .sort((a,b)=>taskLabel(a).localeCompare(taskLabel(b)));
+  selectedTitles=new Set([...selectedTitles].filter(title=>titles.includes(title)));
+  $('#titleFilterOptions').innerHTML=titles.map(title=>`<label><input type="checkbox" value="${esc(title)}"${selectedTitles.has(title)?' checked':''}>${esc(taskLabel(title))}</label>`).join('')
+    ||'<div class="muted">No task titles</div>';
+  $('#titleFilterOptions').querySelectorAll('input').forEach(input=>input.onchange=()=>{
+    if(input.checked) selectedTitles.add(input.value); else selectedTitles.delete(input.value);
+    updateTitleFilterLabel();
+    render();
+  });
+  updateTitleFilterLabel();
+}
+function updateTitleFilterLabel(){
+  const count=selectedTitles.size;
+  $('#titleFilterLabel').textContent=count?`${count} title${count===1?'':'s'} selected`:'All task titles';
 }
 async function load(){ tasks=(await api('/api/tasks?person='+encodeURIComponent(person))).tasks; updateFilterOptions(); render(); }
 async function loadToday(){ tasks=(await api('/api/today')).tasks; updateFilterOptions(); render(); }
@@ -67,11 +83,11 @@ function render(){
   $('#stats').innerHTML=[['Total',tasks.length],['Pending',n('Pending')],['Completed',n('Completed')]]
     .map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
   const q=$('#q').value.toLowerCase(), fs=$('#fs').value, fd=$('#fd').value, fr=$('#fr').value;
-  const list=tasks.filter(t=>(!fs||t.status===fs)&&(!fd||t.department===fd)&&(!fr||t.req_from===fr)
+  const list=tasks.filter(t=>(!selectedTitles.size||selectedTitles.has(t.task))&&(!fs||t.status===fs)&&(!fd||t.department===fd)&&(!fr||t.req_from===fr)
     &&(!q||(t.task+t.department+t.req_from+(todayView?t.person:'')).toLowerCase().includes(q)));
   visibleTasks=list;
   $('#empty').hidden=list.length>0;
-  $('#body').innerHTML=list.map(t=>`<tr>${todayView?`<td>${esc(t.person)}</td>`:''}<td>${fmt(t.date)}</td><td class="t">${esc(t.task)}</td><td>${esc(t.department)}</td>
+  $('#body').innerHTML=list.map(t=>`<tr>${todayView?`<td>${esc(t.person)}</td>`:''}<td>${fmt(t.date)}</td><td class="t">${esc(taskLabel(t.task))}</td><td>${esc(t.department)}</td>
     <td>${esc(t.req_from)}</td><td>${S.canEdit&&!todayView?`<select class="stsel ${t.status}" onchange="quickStatus(${t.id},this.value)"><option${t.status==='Pending'?' selected':''}>Pending</option><option${t.status==='Completed'?' selected':''}>Completed</option></select>`:`<span class="badge ${t.status}">${t.status}</span>`}</td><td>${fmt(t.completed_date)}</td>
     ${todayView?'':`<td>${S.canEdit?`<button class="edit" onclick="openForm(${t.id})">Edit</button>`:''}</td>`}</tr>`).join('');
 }
@@ -103,6 +119,7 @@ async function downloadPdf(){
     department:$('#fd').value,
     req_from:$('#fr').value
   });
+  selectedTitles.forEach(title=>params.append('task_title',title));
   const response=await fetch(`/api/tasks/export.pdf?${params}`);
   if(!response.ok){
     let message='Unable to download PDF';
@@ -204,4 +221,5 @@ $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; 
 $('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
 $('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render; $('#fd').onchange=render; $('#fr').onchange=render;
+$('#clearTitles').onclick=()=>{ selectedTitles.clear(); $('#titleFilterOptions').querySelectorAll('input').forEach(input=>input.checked=false); updateTitleFilterLabel(); render(); };
 boot();

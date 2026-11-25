@@ -37,6 +37,13 @@
         <select id="fs"><option value="">All status</option><option>Pending</option><option>Completed</option></select>
         <select id="fd" aria-label="Filter by department"><option value="">All departments</option></select>
         <select id="fr" aria-label="Filter by requester"><option value="">All requesters</option></select>
+        <details id="titleFilter" class="title-filter">
+          <summary id="titleFilterLabel">All task titles</summary>
+          <div class="title-filter-menu">
+            <button type="button" id="clearTitles" class="clear-filter">Clear selection</button>
+            <div id="titleFilterOptions"></div>
+          </div>
+        </details>
         <select id="download" class="download" aria-label="Download tasks" hidden>
           <option value="">Download…</option><option value="csv">CSV</option><option value="pdf">PDF</option>
         </select>
