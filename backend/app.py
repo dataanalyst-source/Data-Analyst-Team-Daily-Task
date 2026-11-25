@@ -35,7 +35,37 @@ SHEETS = MEMBERS + ["Bana"]
 ADMIN = "Bana"      # sees + edits every sheet
 VIEWER = "Shanto"   # view-only access to every sheet
 DEPTS = ["Marketing", "Operation", "HR", "R&D", "Project Department"]
-REQ_FROM = ["Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan", "Branch Managers"]
+REQ_FROM = [
+    "Farzan", "Shibil", "Shanto", "Dildar", "Ajmal", "Sinan", "Branch Managers",
+    "Fariz", "Abhilash", "Najim", "Stephin", "Shabeeb", "Bana", "Nandhana", "none",
+]
+DEPT_REQUESTERS = {"Operation": ["Dildar", "Shanto"]}
+
+
+def normalize_requester(value):
+    value = value.strip()
+    return "none" if value.casefold() == "none" else value.title()
+
+
+def normalize_department(value):
+    value = value.strip()
+    return next((department for department in DEPTS
+                 if department.casefold() == value.casefold()), value)
+
+
+def requesters_by_department():
+    rows = run("""SELECT DISTINCT department, req_from FROM tasks
+                  WHERE department IS NOT NULL AND req_from IS NOT NULL
+                    AND TRIM(department) <> '' AND TRIM(req_from) <> ''
+                  ORDER BY department, req_from""", fetch=True)
+    options = {department: set(requesters)
+               for department, requesters in DEPT_REQUESTERS.items()}
+    for row in rows:
+        department = normalize_department(row["department"])
+        requester = normalize_requester(row["req_from"])
+        options.setdefault(department, set()).add(requester)
+    return {department: sorted(requesters, key=str.casefold)
+            for department, requesters in options.items()}
 
 
 def run(sql, params=(), fetch=False):
@@ -52,6 +82,10 @@ run("""CREATE TABLE IF NOT EXISTS tasks(
     department TEXT, req_from TEXT, status TEXT, completed_date TEXT)""")
 run("UPDATE tasks SET req_from = TRIM(REPLACE(req_from, ' Sir', '')) "
     "WHERE POSITION(' Sir' IN req_from) > 0")  # cleanup of old names
+run("""UPDATE tasks
+       SET req_from = CASE WHEN LOWER(TRIM(req_from)) = 'none'
+                           THEN 'none' ELSE INITCAP(TRIM(req_from)) END
+       WHERE req_from IS NOT NULL AND req_from <> ''""")
 
 
 def today():
@@ -110,7 +144,8 @@ def me():
     role = "admin" if u == ADMIN else "viewer" if u == VIEWER else "member"
     return jsonify(user=u, role=role, canEdit=role != "viewer",
                    people=SHEETS if u in (ADMIN, VIEWER) else [u],
-                   departments=DEPTS, reqFrom=REQ_FROM, today=today())
+                   departments=DEPTS, reqFrom=REQ_FROM,
+                   requestersByDepartment=requesters_by_department(), today=today())
 
 
 @app.get("/api/tasks")
@@ -234,14 +269,20 @@ def save():
         return jsonify(error="Task is required"), 400
     status = "Completed" if d.get("status") == "Completed" else "Pending"
     done = (d.get("completed_date") or today()) if status == "Completed" else ""  # auto date
-    vals = (d.get("date") or today(), d["task"].strip(), d.get("department", ""), d.get("req_from", ""), status, done)
+    raw_requester = d.get("req_from")
+    if not isinstance(raw_requester, str):
+        return jsonify(error="Who requested the task is required"), 400
+    requester = normalize_requester(raw_requester)
+    if not requester:
+        return jsonify(error="Who requested the task is required"), 400
+    vals = (d.get("date") or today(), d["task"].strip(), d.get("department", ""), requester, status, done)
     if d.get("id"):
         run("UPDATE tasks SET date=%s,task=%s,department=%s,req_from=%s,status=%s,completed_date=%s "
             "WHERE id=%s AND person=%s", vals + (d["id"], p))
     else:
         run("INSERT INTO tasks(date,task,department,req_from,status,completed_date,person) "
             "VALUES(%s,%s,%s,%s,%s,%s,%s)", vals + (p,))
-    return jsonify(ok=True)
+    return jsonify(ok=True, req_from=requester)
 
 
 @app.get("/api/summary")

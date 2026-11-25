@@ -19,7 +19,7 @@ async function boot(){
 function start(){
   $('#login').hidden=true; $('#app').hidden=false;
   $('#who').textContent=(S.role=='admin'?'Admin · ':S.role=='viewer'?'Viewer · ':'')+S.user; $('#add').hidden=!S.canEdit;
-  opts($('#mDept'),[...S.departments,MAN]); opts($('#mReq'),[...S.reqFrom,MAN]);
+  opts($('#mDept'),[...S.departments,MAN]); opts($('#mReq'),[MAN]);
   opts($('#mPerson'),S.people);
   $('#tabs').hidden=false;
   $('#tabs').innerHTML=(S.role!=='member'?'<button class="tab" data-p="__sum">Summary</button>':'')
@@ -122,8 +122,29 @@ async function quickStatus(id,v){
     status:v,completed_date:v==='Completed'?(t.completed_date||''):''}); }catch(e){ alert(e.message); }
   person==='__today'?loadToday():load();
 }
+function activeDepartment(){
+  return $('#mDept').value===MAN?$('#mDeptMan').value.trim():$('#mDept').value;
+}
 function reqUI(){ $('#mMan').hidden=$('#mReq').value!==MAN; }
-function deptUI(){ $('#mDeptMan').hidden=$('#mDept').value!==MAN; }
+function requesterOptions(preferred=''){
+  const options=S.requestersByDepartment[activeDepartment()]||[];
+  opts($('#mReq'),[...options,MAN]);
+  if(options.includes(preferred)){
+    $('#mReq').value=preferred;
+    $('#mMan').value='';
+  }else if(preferred){
+    $('#mReq').value=MAN;
+    $('#mMan').value=preferred;
+  }else{
+    $('#mReq').value=options[0]||MAN;
+    $('#mMan').value='';
+  }
+  reqUI();
+}
+function deptUI(){
+  $('#mDeptMan').hidden=$('#mDept').value!==MAN;
+  requesterOptions();
+}
 function stUI(){
   const done=$('#mSt').value==='Completed'; $('#dBox').hidden=!done;
   if(done&&!$('#mDone').value) $('#mDone').value=S.today; if(!done) $('#mDone').value='';
@@ -141,9 +162,8 @@ function openForm(id){
   $('#mDeptMan').value=manualDept?t.department:'';
   $('#mSt').value=t?t.status:'Pending';
   $('#mDone').value=t?t.completed_date:'';
-  const manual=t&&t.req_from&&!S.reqFrom.includes(t.req_from);
-  $('#mReq').value=manual?MAN:(t?t.req_from:S.reqFrom[0]); $('#mMan').value=manual?t.req_from:'';
-  $('#mDel').hidden=!t; $('#mErr').textContent=''; deptUI(); reqUI(); stUI(); $('#modal').hidden=false;
+  $('#mDel').hidden=!t; $('#mErr').textContent=''; deptUI();
+  requesterOptions(t?t.req_from:''); stUI(); $('#modal').hidden=false;
 }
 async function save(){
   const department=$('#mDept').value===MAN?$('#mDeptMan').value.trim():$('#mDept').value;
@@ -153,8 +173,13 @@ async function save(){
   if(!req) return $('#mErr').textContent='Please enter who requested it';
   try{
     formPerson=person==='__today'&&S.role==='admin'&&!editId?$('#mPerson').value:formPerson;
-    await api('/api/tasks','POST',{id:editId,person:formPerson,date:$('#mDate').value,task:$('#mTask').value,department,
+    const saved=await api('/api/tasks','POST',{id:editId,person:formPerson,date:$('#mDate').value,task:$('#mTask').value,department,
       req_from:req,status:$('#mSt').value,completed_date:$('#mDone').value});
+    S.requestersByDepartment[department]??=[];
+    if(!S.requestersByDepartment[department].includes(saved.req_from)){
+      S.requestersByDepartment[department].push(saved.req_from);
+      S.requestersByDepartment[department].sort((a,b)=>a.localeCompare(b));
+    }
     $('#modal').hidden=true; person==='__today'?loadToday():load();
   }catch(e){ $('#mErr').textContent=e.message; }
 }
@@ -165,5 +190,5 @@ $('#out').onclick=async()=>{ await api('/api/logout','POST'); boot(); };
 $('#add').onclick=()=>openForm(); $('#mX').onclick=()=>$('#modal').hidden=true; $('#mSave').onclick=save;
 $('#download').onchange=downloadSelected;
 $('#mDel').onclick=async()=>{ if(confirm('Delete this task?')){ await api(`/api/tasks/${editId}?person=${encodeURIComponent(formPerson)}`,'DELETE'); $('#modal').hidden=true; person==='__today'?loadToday():load(); } };
-$('#mDept').onchange=deptUI; $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
+$('#mDept').onchange=deptUI; $('#mDeptMan').oninput=()=>requesterOptions(); $('#mReq').onchange=reqUI; $('#mSt').onchange=stUI; $('#q').oninput=render; $('#fs').onchange=render;
 boot();
